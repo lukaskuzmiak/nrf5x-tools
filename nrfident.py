@@ -16,12 +16,14 @@ from intelhex import IntelHex
 from intelhex import bin2hex
 from tqdm import tqdm
 
+
 class NRF5xIdentify(object):
     """
     Identification class
     Given a firmware, computes its signature and looks for it in the database
     returns the SDK version used, the possible SoftDevice versions and associated RAM and ROM binary addresses
     """
+
     def __init__(self, binfile, cur, objtype):
         self.cur = cur
         self.sdk_version = None
@@ -57,13 +59,13 @@ class NRF5xIdentify(object):
         for i in tqdm(range(1)):
             time.sleep(0.05)
         req = "select sdk_version, nrf, softdevice_v from SoftDevice where sign LIKE ?"
-        self.cur.execute(req, (self.sign, ))
+        self.cur.execute(req, (self.sign,))
         res = self.cur.fetchall()
         # CASE 1 : signature of the binary file is not in database
         if res == []:
             print("Signature not found in nRF5x database")
             print("\nComputing approximate signature from strings in binary")
-            #content = "Nordic Semiconductor"
+            # content = "Nordic Semiconductor"
             cmd = "strings " + self.bin + " | grep Nordic\ Semiconductor/ | cut -d '/' -f 3,5"
             cmd += "| sed -e s/'\/'/'_'/g | cut -d ' ' -f 2 | sed -e s/'SDK_'/''/g | "
             cmd += "sed -e s/'.0_'/'_'/g | sort -u"
@@ -125,10 +127,11 @@ class NRF5xIdentify(object):
                     mem_props(res, "m")
             else:
                 req = "select softdev_v, card_version, ram_origin, ram_length, rom_origin, rom_length, nrf from MemoryAddr where softdev_signature LIKE ? GROUP BY card_version, ram_origin, ram_length, rom_origin, rom_length"
-                self.cur.execute(req, (self.sign, ))
+                self.cur.execute(req, (self.sign,))
                 for res in self.cur.fetchall():
                     mem_props(res, "")
-                
+
+
 def mem_props(res, ident_type):
     if ident_type != "m":
         softdev = res[0]
@@ -137,18 +140,19 @@ def mem_props(res, ident_type):
         ram_length = res[3]
         rom_addr = res[4]
         rom_length = res[5]
-        print("\n", " "*35, "*****")
-        print(" "*33, "Binary mapping")
-        print(" "*36, "*****\n")
+        print("\n", " " * 35, "*****")
+        print(" " * 33, "Binary mapping")
+        print(" " * 36, "*****\n")
         print("SoftDevice  : ", softdev)
         print("Card version : ", card_v)
-        print(" "*10, "*****")
+        print(" " * 10, "*****")
         print("RAM address  : ", ram_addr)
         print("RAM length   : ", ram_length)
         print("ROM address  : ", rom_addr)
         print("ROM length   : ", rom_length)
     else:
         nrf = res[6]
+
 
 def bin_to_hex(binary):
     """
@@ -162,6 +166,7 @@ def bin_to_hex(binary):
     print("Hex file successfully dumped on disk: {0}".format(hexfile))
     return hexfile
 
+
 def hex_2_binary(hexfile):
     """
     Returns the binary format from the given ihex file
@@ -171,6 +176,7 @@ def hex_2_binary(hexfile):
     ih.tobinfile(bin_file)
     print("Dumping binary from hex file to directory: ", bin_file)
     return bin_file
+
 
 def helper():
     """
@@ -183,12 +189,14 @@ def helper():
     print("################################################################### ")
     print("\n")
 
+
 def is_valid_file(parser, arg):
     """
     Checks if the input file is valid
     """
     if not os.path.exists(arg):
         parser.error("The file %s does not exist!" % arg)
+
 
 def main():
     """
@@ -218,6 +226,7 @@ def main():
     nrf.identify()
     nrf.map_binary()
     con.close()
+
 
 if __name__ == "__main__":
     main()

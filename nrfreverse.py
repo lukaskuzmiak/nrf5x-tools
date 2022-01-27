@@ -7,6 +7,7 @@ import sqlite3
 import idaapi
 import idc
 
+
 def launch_print():
     """print message"""
     print("############################ nRF5-tool ############################ ")
@@ -16,11 +17,13 @@ def launch_print():
     print("################################################################### ")
     print("\n")
 
+
 class NRF5xReverse(object):
     """
     nRF5x reverse class initiates objects with the softdevice's signature
     renames all syscalls in IDA
     """
+
     def __init__(self, nRFv_path, nRF_db):
         """
         Database initialisation
@@ -31,7 +34,8 @@ class NRF5xReverse(object):
         self.svc_addr = dict()
         self.svc_count = dict()
         self.structs = []
-        self.types = {"int8_t":"__int8", "int16_t": "__int16", "int32_t": "__int32", "int64_t":"__int64", "int128_t":"__int128"}
+        self.types = {"int8_t": "__int8", "int16_t": "__int16", "int32_t": "__int32", "int64_t": "__int64",
+                      "int128_t": "__int128"}
         with open(nRFv_path, "r") as nrf_file:
             self.sign = nrf_file.read()
 
@@ -55,6 +59,7 @@ class NRF5xReverse(object):
         """
         for k, v in self.svc_addr.items():
             self.svc_count[v] = self.svc_count.get(v, 0) + 1
+
     def resolve_svcs(self):
         """
         Resolves svcs in binary
@@ -73,9 +78,9 @@ class NRF5xReverse(object):
         """
         Extracts structures from nRF.db
         """
-        self.structs = dict() 
+        self.structs = dict()
         req = "select distinct(name) from Structures where softdev_signature LIKE ?"
-        self.cur.execute(req, (self.sign, ))
+        self.cur.execute(req, (self.sign,))
         structs = self.cur.fetchall()
         print(structs)
         for struct in structs:
@@ -118,7 +123,7 @@ class NRF5xReverse(object):
                     uid = idaapi.get_next_struc_idx(idx)
                     idaapi.add_struc(uid, str(union_name), 1)
                     for union_member in union_members:
-                        if len(union_member.split(" ")) > 1 :
+                        if len(union_member.split(" ")) > 1:
                             print(union_member)
                             member_name = str(union_member.split(" ")[1])
                             member_type = str(union_member.split(" ")[0])
@@ -133,11 +138,13 @@ class NRF5xReverse(object):
             struct_cmt = "STRUCTURE " + struct_name + " contains " + mem_cmt
             idaapi.set_struc_cmt(sid, str(struct_cmt), False)
 
+
 class SVCALL():
     """
     SVCALL class initiates svc object associated to an address in IDA
     sets function names and prototypes
     """
+
     def __init__(self, softdev_sign, cur, addr, syscall, syscall_cnt):
         self.cur = cur
         self.addr = addr
@@ -145,10 +152,10 @@ class SVCALL():
         self.syscall_cnt = syscall_cnt
         req = "select distinct(svc), function, ret_type, arguments from SVCALL where LOWER(syscall)=LOWER(?) and softdev_signature LIKE ?"
         self.cur.execute(req, (syscall, softdev_sign))
-        #checking if syscall has same number of arguments for different softdevices given the approximative signature
+        # checking if syscall has same number of arguments for different softdevices given the approximative signature
         res1 = self.cur.fetchall()
         if len(res1) != 1:
-            self.args_len = len(res1[0][3].rsplit(",")) 
+            self.args_len = len(res1[0][3].rsplit(","))
             for i in range(len(res1)):
                 args_1 = res1[i][3]
                 if len(args_1.rsplit(",")) != self.args_len:
@@ -162,6 +169,7 @@ class SVCALL():
         self.function = str(res[1])
         self.ret_type = res[2]
         self.args = res[3]
+
     def set_funcname(self):
         if self.syscall_cnt > 1:
             comment = "contains " + str(self.function) + "'function code. Same declaration at "
@@ -172,6 +180,7 @@ class SVCALL():
             comment = str(self.function)
         MakeComm(self.addr, comment)
         MakeNameEx(self.addr, self.function, SN_NOWARN)
+
     def rename(self, types):
         """
         Sets prototypes and names to functions in IDA
@@ -183,16 +192,16 @@ class SVCALL():
             for item in args_an:
                 if "_t" in item or "IRQn_Type" in item:
                     if item in types:
-                        #print("known type", item)
+                        # print("known type", item)
                         self.args = self.args.replace(item, types[item])
                     elif "IRQn_Type" in item:
-                        #int is a temporary value before getting structures from parsing SDKs
+                        # int is a temporary value before getting structures from parsing SDKs
                         unknown_type = "IRQn_Type"
                         self.args = self.args.replace(unknown_type, "int __struct_ptr")
                         print("IRQN", self.addr, self.function, self.args)
             self.args = "(" + self.args + ");"
             self.set_funcname()
-            newtype = "unsigned __int32 "+ str(self.function) + str(self.args)
+            newtype = "unsigned __int32 " + str(self.function) + str(self.args)
             SetType(self.addr, str(newtype))
         except IOError:
             pass
@@ -204,6 +213,7 @@ class SVCALL():
         size = idc.GetStrucSize(sid)
         idc.MaleUnknown(self.addr, size, idc.DOUNK_DELNAMES)
         idaapi.doStruct(self.addr, size, sid)
+
 
 def main():
     """
@@ -220,6 +230,7 @@ def main():
     nrf.count_svcs()
     nrf.resolve_svcs()
     nrf.con.close()
+
 
 if __name__ == "__main__":
     main()
