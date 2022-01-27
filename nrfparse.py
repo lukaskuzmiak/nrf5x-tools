@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.5
+#!/usr/bin/env python3
 """
 NRF5-parser tool. 
 This script will parse the development kits of Nordic Semiconductor 
