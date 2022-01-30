@@ -307,12 +307,13 @@ class SoftDevice(NRFBase):
                             i = 0
                             while 1:
                                 enumline = header.readline()
-                                if (not ("};" in enumline) and self.enum == 1):
+                                if not ("};" in enumline) and self.enum == 1:
                                     svc_func = enumline.split(",")[0].strip()
                                     # Get the SVC_BASE number
                                     if "=" in svc_func:
                                         svc_base = svc_func.split("=")[1].strip()
                                         svc_func = svc_func.split("=")[0].strip()
+                                        i = 0
                                     if svc_base in self.svc_base.keys():
                                         svc_numbase = self.svc_base[svc_base]
                                         if "0x" in svc_numbase:
