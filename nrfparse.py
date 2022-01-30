@@ -13,7 +13,7 @@ import re
 import glob
 from sqlalchemy import Column, Integer, String, create_engine, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import Session, relationship
 from intelhex import IntelHex
 
 NRFBase = declarative_base()
@@ -226,7 +226,7 @@ class SoftDevice(NRFBase):
                             arg = newline
                             while "}" not in newline:
                                 # If structure contains another structure or union
-                                if ("union" in newline or "struct" in newline):
+                                if "union" in newline or "struct" in newline:
                                     union_args = []
                                     if "union" in newline:
                                         arg = "union "
@@ -517,7 +517,7 @@ class SDK(object):
         """
         Lists Softdevices contained in the SDK archive
         """
-        sdv_regex = re.compile("components/softdevice/(s\d+)/")
+        sdv_regex = re.compile(r'components/softdevice/(s\d+)/')
         inc_path = "/Include/s"
         src_path = "/Source/templates/gcc/"
         soft_devices = set()
@@ -528,15 +528,15 @@ class SDK(object):
                     sdv = sdv_regex.search(f).group(1)
                     soft_devices.add(sdv)
                     # only soft_device source code
-                elif (f.startswith("nrf") and inc_path in f and len(f.split("/")[2]) == 4 and f.split("/")[
-                    2].startswith('s')):
+                elif (f.startswith("nrf") and inc_path in f and len(f.split("/")[2]) == 4 and
+                      f.split("/")[2].startswith('s')):
                     nrf = f.split("/")[0]
                     soft_devices.add(nrf + "," + f.split("/")[2])
         return soft_devices
 
     @staticmethod
     def is_linker_path(path):
-        linker_re = re.compile('.*toolchain/(arm)?gcc/.*\\.ld$')
+        linker_re = re.compile(r'.*toolchain/(arm)?gcc/.*\.ld$')
         return linker_re.match(path)
 
     @staticmethod
@@ -544,7 +544,7 @@ class SDK(object):
         if path.startswith('nrf5'):
             return False
 
-        header_re = re.compile('.*components/softdevice/s\\d{3}/headers/.*$')
+        header_re = re.compile(r'.*components/softdevice/s\d{3}/headers/.*$')
         return header_re.match(path)
 
     def extract_softdevices(self):
@@ -624,11 +624,7 @@ class SDKs(object):
 
 
 def main():
-    """
-    main
-    """
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = Session(bind=engine)
     NRFBase.metadata.create_all(engine)
     sdk_dir = "developer.nordicsemi.com/nRF5_SDK/"
     sdks = SDKs(sdk_dir)
