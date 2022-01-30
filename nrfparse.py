@@ -9,6 +9,8 @@ import fnmatch
 import os
 import zipfile
 import hashlib
+import re
+import glob
 from sqlalchemy import Column, Integer, String, create_engine, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -16,6 +18,9 @@ from intelhex import IntelHex
 
 NRFBase = declarative_base()
 engine = create_engine("sqlite:///nRF.db")
+
+sdks_base_dir = './SDKs'
+softdevice_dir = '/components/softdevice'
 
 
 class SoftDevice(NRFBase):
@@ -54,11 +59,23 @@ class SoftDevice(NRFBase):
         self.enum = 0
         self.session = session
 
+    def sdk_version_path(self):
+        return os.path.join(sdks_base_dir, self.sdk_version)
+
+    def sdk_locate_path(self, path):
+        paths = glob.glob(self.sdk_version_path() + "/**/" + path)
+        if len(paths) == 0:
+            paths = [os.path.join(self.sdk_version_path(), path)]
+        assert len(paths) == 1
+        return paths[0]
+
     def set_linkers(self):
         """
         Sets the list of linkers'paths of the associated softdevice
         """
-        linkers_path = "./SDKs/" + self.sdk_version + "/" + self.linker_dir
+        linkers_path = self.sdk_locate_path(self.linker_dir)
+        if not os.path.exists(linkers_path):
+            print('Linker path {} does not exist'.format(linkers_path))
         for linker_file in os.listdir(linkers_path):
             if fnmatch.fnmatch(linker_file, "*.ld"):
                 self.linkers.append(linkers_path + linker_file)
@@ -67,7 +84,7 @@ class SoftDevice(NRFBase):
         """
         Sets the list of headers'paths to the associated softdevice
         """
-        headers_path = "./SDKs/" + self.sdk_version + "/" + self.header_dir
+        headers_path = self.sdk_locate_path(self.header_dir)
         for header_file in os.listdir(headers_path):
             if fnmatch.fnmatch(header_file, "*.h"):
                 # Add the other case
@@ -79,8 +96,8 @@ class SoftDevice(NRFBase):
         Returns softdevice's binary's signature
         The signature is the sha256 hash of specific bytes of the firmware
         """
-        if (self.hex_dir != None):
-            hex_path = "./SDKs/" + self.sdk_version + "/" + self.hex_dir
+        if self.hex_dir is not None:
+            hex_path = self.sdk_locate_path(self.hex_dir)
             # Converting ihex to binary format
             print("Converting the firmware from intelHex format to binary")
             ih = IntelHex(hex_path)
@@ -499,15 +516,16 @@ class SDK(object):
         """
         Lists Softdevices contained in the SDK archive
         """
-        sdv = "components/softdevice/s"
+        sdv_regex = re.compile("components/softdevice/(s\d+)/")
         inc_path = "/Include/s"
         src_path = "/Source/templates/gcc/"
         soft_devices = set()
         with zipfile.ZipFile(self.zip_path) as sdv_zip:
             for f in sdv_zip.namelist():
                 # compiled soft_device
-                if (f.startswith(sdv) and f.endswith('/')):
-                    soft_devices.add(f.split("/")[2])
+                if sdv_regex.search(f) is not None:
+                    sdv = sdv_regex.search(f).group(1)
+                    soft_devices.add(sdv)
                     # only soft_device source code
                 elif (f.startswith("nrf") and inc_path in f and len(f.split("/")[2]) == 4 and f.split("/")[
                     2].startswith('s')):
@@ -515,38 +533,53 @@ class SDK(object):
                     soft_devices.add(nrf + "," + f.split("/")[2])
         return soft_devices
 
+    @staticmethod
+    def is_linker_path(path):
+        linker_re = re.compile('.*toolchain/(arm)?gcc/.*\\.ld$')
+        return linker_re.match(path)
+
+    @staticmethod
+    def is_header_path(path):
+        if path.startswith('nrf5'):
+            return False
+
+        header_re = re.compile('.*components/softdevice/s\\d{3}/headers/.*$')
+        return header_re.match(path)
+
     def extract_softdevices(self):
         """
         Extracts headers and ld directories from archive to local disk
         """
-        sdv = "components/softdevice/s"
         inc_path = "/Include/s"
         src_path = "/Source/templates/gcc/"
         with zipfile.ZipFile(self.zip_path) as sdv_zip:
             for f in sdv_zip.namelist():
                 # compiled soft_device
-                if f.startswith(sdv) and f.endswith("/"):
-                    if ("headers" in f and not "nrf5" in f) or ("toolchain/armgcc/" in f):
-                        dir_to_extract = f
-                        self.extract_fromzip(sdv_zip, f)
+                if self.is_linker_path(f):
+                    self.extract_fromzip(sdv_zip, f)
+                elif self.is_header_path(f):
+                    self.extract_fromzip(sdv_zip, f)
                 # for archives containing only soft_device source code
                 elif f.startswith("nrf5"):
                     if (inc_path in f and len(f.split("/")[2]) == 4 and f.split("/")[2].startswith('s')) or (
                             src_path in f and "xx" in f and "_s" in f):
                         self.extract_fromzip(sdv_zip, f)
 
+    def sdk_version_path(self):
+        return os.path.join(sdks_base_dir, self.version)
+
     def extract_hex(self, hex_path):
         """
         Extracts header and linker files from the SDK archive to local SDKs directory
         """
-        directory = "./SDKs/" + self.version + "/"
+        directory = self.sdk_version_path() + os.path.sep
         if not os.path.exists(directory):
             if not os.path.exists("SDKs"):
                 os.mkdir("SDKs")
             os.mkdir(directory)
         with zipfile.ZipFile(self.zip_path) as sdv_zip:
             for f in sdv_zip.namelist():
-                if (f.startswith(hex_path) and fnmatch.fnmatch(f, '*.hex')):
+                if hex_path in f and fnmatch.fnmatch(f, '*.hex'):
                     print("Extracting the Hex format of firmware from archive to disk")
                     self.hex_path = f
                     sdv_zip.extract(f, directory)
@@ -555,7 +588,7 @@ class SDK(object):
         """
         Extracts header and ld files from the SDK archive to local SDKs directory
         """
-        directory = "./SDKs/" + self.version + "/"
+        directory = self.sdk_version_path() + os.path.sep
         if not os.path.exists(directory):
             if not os.path.exists("SDKs"):
                 os.mkdir("SDKs")
@@ -564,7 +597,7 @@ class SDK(object):
             for f in sdv_zip.namelist():
                 if f.startswith(path):
                     sdv_zip.extract(f, directory)
-        except IOError:
+        except IOError as err:
             print("I/O error: {0}".format(err))
 
 
@@ -585,7 +618,7 @@ class SDKs(object):
                         sdk_version = '.'.join(fname.split("_", 2)[2].split(".zip")[0].split("_")[:-1])
                         zip_path = os.path.join(curdir, fname)
                         self.dict[sdk_version] = zip_path
-        except IOError:
+        except IOError as err:
             print("I/O error: {0}".format(err))
 
 
@@ -622,11 +655,17 @@ def main():
             else:
                 nrf = "hex"
                 sdvc = soft_dvc
+                sdks_dir = "./SDKs/" + sdk_v
                 header_dir = "components/softdevice/" + sdvc + "/headers/"
                 linker_dir = "components/softdevice/" + sdvc + "/toolchain/armgcc/"
-                linkers_path = "./SDKs/" + sdk_v + "/" + linker_dir
-                if os.path.exists(linkers_path) is False:
-                    linker_dir = "components/toolchain/gcc/"
+
+                linkers_paths = glob.glob(sdks_dir + '/**/' + linker_dir)
+                if len(linkers_paths) == 0:
+                    linkers_paths = [sdks_dir + '/' + linker_dir]
+                for linkers_path in linkers_paths:
+                    if os.path.exists(linkers_path) is False:
+                        linker_dir = "components/toolchain/gcc/"
+
                 hex_dir = "components/softdevice/" + sdvc + "/hex/"
                 print("\n=== {0} {1} ===".format(sdvc, nrf))
                 sdk.extract_hex(hex_dir)
@@ -637,7 +676,7 @@ def main():
             # Setting a list of header files for parsing
             try:
                 soft_device.set_linkers()
-                if soft_device.linkers != []:
+                if len(soft_device.linkers) > 0:
                     soft_device.mem_parser()
             except IOError as err:
                 print("I/O error: {0}".format(err))
