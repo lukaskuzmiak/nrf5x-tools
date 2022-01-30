@@ -3,9 +3,16 @@
 """
 NRF5 reverse tool using IDA-python
 """
+import os
 import sqlite3
 import idaapi
 import idc
+import ida_bytes
+import ida_struct
+
+"""
+https://hex-rays.com/products/ida/support/ida74_idapython_no_bc695_porting_guide.shtml
+"""
 
 
 def launch_print():
@@ -46,11 +53,11 @@ class NRF5xReverse(object):
         Retrieves syscall number called (SVC 0xnum => 0xnum syscall) at svc_addr
         """
         for segea in Segments():
-            for head in Heads(segea, SegEnd(segea)):
-                if isCode(GetFlags(head)):
-                    mnem = GetMnem(head)
+            for head in Heads(segea, idc.get_segm_end(segea)):
+                if ida_bytes.is_code(ida_bytes.get_full_flags(head)):
+                    mnem = idc.print_insn_mnem(head)
                     if mnem == "SVC":
-                        syscall = GetOpnd(head, 0)
+                        syscall = idc.print_operand(head, 0)
                         self.svc_addr[head] = syscall
 
     def count_svcs(self):
@@ -112,7 +119,7 @@ class NRF5xReverse(object):
         idx = idaapi.get_last_struc_idx()
         for structure, args in self.structs.items():
             struct_name = str(structure)
-            sid = idc.GetStrucIdByName(struct_name)
+            sid = ida_struct.get_struc_id(struct_name)
             mem_cmt = ""
             for struct_arg in args:
                 if "union" in struct_arg[0]:
@@ -127,16 +134,16 @@ class NRF5xReverse(object):
                             print(union_member)
                             member_name = str(union_member.split(" ")[1])
                             member_type = str(union_member.split(" ")[0])
-                            member_id = idc.GetStrucIdByName(member_type)
-                            member_size = idc.GetStrucSize(member_id)
+                            member_id = ida_struct.get_struc_id(member_type)
+                            member_size = ida_struct.get_struc_size(member_id)
                             print(uid, union_name, member_type, member_name, member_size)
-                            idc.AddStrucMember(uid, member_name, -1, idc.FF_DWRD, -1, member_size)
+                            idc.add_struc_member(uid, member_name, -1, ida_bytes.FF_DWORD, -1, member_size)
                 member = struct_arg[0].split(" ")[1].split("(")[0]
                 member_type = struct_arg[0].split(" ")[0]
                 mem_cmt += struct_arg[0] + "|"
-                idc.AddStrucMember(sid, str(member), -1, idc.FF_DWRD, -1, 8)
+                idc.add_struc_member(sid, str(member), -1, ida_bytes.FF_DWORD, -1, 8)
             struct_cmt = "STRUCTURE " + struct_name + " contains " + mem_cmt
-            idaapi.set_struc_cmt(sid, str(struct_cmt), False)
+            ida_struct.set_struc_cmt(sid, str(struct_cmt), False)
 
 
 class SVCALL():
@@ -178,8 +185,8 @@ class SVCALL():
         else:
             self.function = str(self.function)
             comment = str(self.function)
-        MakeComm(self.addr, comment)
-        MakeNameEx(self.addr, self.function, SN_NOWARN)
+        idc.set_cmt(self.addr, comment, 0)
+        idc.set_name(self.addr, self.function, SN_NOWARN)
 
     def rename(self, types):
         """
@@ -210,7 +217,7 @@ class SVCALL():
         """
         Applies structures on arguments
         """
-        size = idc.GetStrucSize(sid)
+        size = ida_struct.get_struc_size(sid)
         idc.MaleUnknown(self.addr, size, idc.DOUNK_DELNAMES)
         idaapi.doStruct(self.addr, size, sid)
 
@@ -220,8 +227,9 @@ def main():
     main
     """
     launch_print()
-    nrf_sign = "./nRF_ver"
-    nrf_db = "./nRF.db"
+    script_path = os.path.dirname(os.path.realpath(__file__))
+    nrf_sign = os.path.join(script_path, "nRF_ver")
+    nrf_db = os.path.join(script_path, "nRF.db")
     nrf = NRF5xReverse(nrf_sign, nrf_db)
     nrf.get_structs()
     nrf.add_struc()
